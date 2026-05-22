@@ -76,7 +76,7 @@ if not hasattr(_gc_utils, '_patched'):
 
 # ===================== 配置区 =====================
 OLLAMA_BASE = "http://localhost:11434"
-MODEL_NAME = "qwen2.5vl:7b"
+MODEL_NAME = "qwen2.5vl:3b"
 EXCEL_PATH = "合同台账模板.xlsx"
 MAX_IMAGE_LONGEST = 1200       # 图片最长边（像素），8GB显存友好
 MAX_PDF_PAGES = 3              # PDF 最多取前 N 页
