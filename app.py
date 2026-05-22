@@ -78,7 +78,7 @@ if not hasattr(_gc_utils, '_patched'):
 OLLAMA_BASE = "http://localhost:11434"
 MODEL_NAME = "qwen2.5vl:3b"
 EXCEL_PATH = "合同台账模板.xlsx"
-MAX_IMAGE_LONGEST = 1200       # 图片最长边（像素），8GB显存友好
+MAX_IMAGE_LONGEST = 900        # 图片最长边（像素），3B模型友好
 MAX_PDF_PAGES = 3              # PDF 最多取前 N 页
 MAX_RETRIES = 3
 RETRY_DELAY_SEC = 3
@@ -156,20 +156,19 @@ def pdf_to_images(pdf_path: str):
     return images
 
 
-def merge_images_vertically(images):
-    """多图垂直拼接为一张"""
-    if not images:
+def merge_results(results: list) -> dict:
+    """合并多页提取结果：第一页为主，后续页填补空字段"""
+    if not results:
         return None
-    if len(images) == 1:
-        return images[0]
-    w = max(img.width for img in images)
-    h = sum(img.height for img in images)
-    canvas = Image.new("RGB", (w, h), (255, 255, 255))
-    y = 0
-    for img in images:
-        canvas.paste(img, (0, y))
-        y += img.height
-    return canvas
+    if len(results) == 1:
+        return results[0]
+    merged = results[0].copy()
+    for r in results[1:]:
+        for key in merged:
+            val = merged.get(key)
+            if not val or val == "null" or val is None or str(val).strip() == "":
+                merged[key] = r.get(key, "")
+    return merged
 
 
 def image_to_base64(img):
@@ -221,7 +220,7 @@ def call_ollama_vision(image_b64: str):
         }],
         "stream": False,
         "format": "json",
-        "options": {"temperature": 0.1, "num_predict": 1024},
+        "options": {"temperature": 0.1, "num_predict": 1024, "num_ctx": 2048},
     }
 
     for attempt in range(1, MAX_RETRIES + 1):
@@ -287,7 +286,9 @@ def append_row_to_excel(data: dict):
 # ===================== 文件处理 =====================
 
 def process_one_file(file_path: str):
-    """处理单个文件 → (字段数据 dict, 日志文本)"""
+    """处理单个文件 → (字段数据 dict, 日志文本)
+    PDF 逐页调用 Ollama 后合并结果，避免大图爆显存
+    """
     path = Path(file_path)
     ext = path.suffix.lower()
     name = path.name
@@ -296,22 +297,32 @@ def process_one_file(file_path: str):
         # ---- 1. 转图片 ----
         if ext == ".pdf":
             images = pdf_to_images(file_path)
-            img = merge_images_vertically(images)
-            if img is None:
+            if not images:
                 return None, f"{name}: PDF 无内容"
         elif ext in (".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"):
-            img = resize_image(Image.open(file_path))
+            images = [resize_image(Image.open(file_path))]
         else:
             return None, f"{name}: 不支持的格式"
 
-        # ---- 2. 调 AI ----
-        image_b64 = image_to_base64(img)
-        result = call_ollama_vision(image_b64)
+        # ---- 2. 逐页调 AI ----
+        page_results = []
+        page_logs = []
+        for i, img in enumerate(images):
+            image_b64 = image_to_base64(img)
+            result = call_ollama_vision(image_b64)
+            if result:
+                page_results.append(result)
+                page_logs.append(f"第{i+1}页✅")
+            else:
+                page_logs.append(f"第{i+1}页❌")
 
-        if result is None:
-            return None, f"{name}: AI 提取失败（已重试{MAX_RETRIES}次）"
+        if not page_results:
+            log_detail = " ".join(page_logs)
+            return None, f"{name}: 所有页提取失败 [{log_detail}]"
 
-        return result, f"{name}: ✅ 提取成功"
+        # ---- 3. 合并结果 ----
+        merged = merge_results(page_results)
+        return merged, f"{name}: {' '.join(page_logs)}"
 
     except ImportError as e:
         return None, f"{name}: 缺少依赖 - {e}"
