@@ -172,12 +172,11 @@ def merge_images_vertically(images):
     return canvas
 
 
-def image_to_data_url(img):
-    """PIL.Image → data:image/png;base64,..."""
+def image_to_base64(img):
+    """PIL.Image → base64 string（Ollama 原生格式用裸 base64，不用 data URL）"""
     buf = BytesIO()
     img.save(buf, format="PNG", optimize=True)
-    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    return f"data:image/png;base64,{b64}"
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
 def safe_parse_json(text: str):
@@ -211,14 +210,14 @@ def safe_parse_json(text: str):
     return None
 
 
-def call_ollama_vision(data_url: str):
-    """调用 Ollama 视觉模型，返回解析后的 dict"""
+def call_ollama_vision(image_b64: str):
+    """调用 Ollama 视觉模型（Ollama 原生格式），返回解析后的 dict"""
     payload = {
         "model": MODEL_NAME,
         "messages": [{
             "role": "user",
             "content": [
-                {"type": "image_url", "image_url": {"url": data_url}},
+                {"type": "image", "data": image_b64},
                 {"type": "text", "text": SYSTEM_PROMPT},
             ],
         }],
@@ -231,6 +230,7 @@ def call_ollama_vision(data_url: str):
         try:
             resp = requests.post(f"{OLLAMA_BASE}/api/chat", json=payload, timeout=120)
             if resp.status_code != 200:
+                logging.warning(f"Ollama API 返回 {resp.status_code}: {resp.text[:200]}")
                 time.sleep(RETRY_DELAY_SEC)
                 continue
             body = resp.json()
@@ -307,8 +307,8 @@ def process_one_file(file_path: str):
             return None, f"{name}: 不支持的格式"
 
         # ---- 2. 调 AI ----
-        data_url = image_to_data_url(img)
-        result = call_ollama_vision(data_url)
+        image_b64 = image_to_base64(img)
+        result = call_ollama_vision(image_b64)
 
         if result is None:
             return None, f"{name}: AI 提取失败（已重试{MAX_RETRIES}次）"
