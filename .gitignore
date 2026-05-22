@@ -4,3 +4,6 @@ dist/
 build/
 *.spec
 合同台账模板.xlsx
+contract_extractor.log
+崩溃日志.txt
+
