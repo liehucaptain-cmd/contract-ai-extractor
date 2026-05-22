@@ -24,7 +24,7 @@ jobs:
           pip install pyinstaller
 
       - name: Build with PyInstaller
-        run: pyinstaller --onedir --name 合同提取工具 --hidden-import fitz --hidden-import openpyxl --hidden-import PIL._tkinter_finder --collect-all gradio --collect-all gradio_client --collect-all PIL --collect-all openpyxl --noconfirm app.py
+        run: pyinstaller --onedir --name 合同提取工具 --hidden-import fitz --hidden-import openpyxl --hidden-import PIL._tkinter_finder --collect-all gradio --collect-all gradio_client --collect-all starlette --collect-all jinja2 --collect-all PIL --collect-all openpyxl --noconfirm app.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
