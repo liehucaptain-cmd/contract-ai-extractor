@@ -3,7 +3,7 @@ name: Build Windows Exe
 on:
   push:
     branches: [main]
-  workflow_dispatch:  # 支持手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -25,7 +25,16 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          pyinstaller --onedir --name 合同提取工具 --noconfirm app.py
+          pyinstaller --onedir ^
+            --name 合同提取工具 ^
+            --hidden-import fitz ^
+            --hidden-import openpyxl ^
+            --hidden-import PIL._tkinter_finder ^
+            --collect-all gradio ^
+            --collect-all PIL ^
+            --collect-all openpyxl ^
+            --noconfirm ^
+            app.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

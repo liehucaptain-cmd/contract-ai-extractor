@@ -7,6 +7,39 @@
   打包: pyinstaller --onedir --name 合同提取工具 app.py
 """
 
+import sys
+import os
+import logging
+import traceback
+from datetime import datetime
+
+# ===================== 日志系统（写入文件，防一闪而过） =====================
+LOG_FILE = "contract_extractor.log"
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ],
+)
+
+# 捕获所有未处理的异常，写入日志文件
+def global_excepthook(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logging.critical("程序崩溃", exc_info=(exc_type, exc_value, exc_traceback))
+    # 写入专门错误文件
+    with open("崩溃日志.txt", "w", encoding="utf-8") as f:
+        f.write(f"时间: {datetime.now()}\n")
+        f.write(f"类型: {exc_type.__name__}\n")
+        f.write(f"信息: {exc_value}\n\n")
+        traceback.print_exception(exc_type, exc_value, exc_traceback, file=f)
+        f.write("\n请将此文件发给开发者\n")
+
+sys.excepthook = global_excepthook
+
 import gradio as gr
 import requests
 import json
@@ -14,7 +47,6 @@ import base64
 import re
 import time
 from io import BytesIO
-from datetime import datetime
 from pathlib import Path
 
 from PIL import Image
@@ -396,23 +428,42 @@ def build_ui():
 # ===================== 入口 =====================
 
 if __name__ == "__main__":
-    _ensure_excel(EXCEL_PATH)
+    try:
+        _ensure_excel(EXCEL_PATH)
 
-    # 预检 Ollama（只打印，不阻塞启动）
-    ok, msg = check_ollama()
-    sep = "=" * 50
-    print(f"\n{sep}")
-    print(f"  合同智能提取工具")
-    print(f"  状态: {msg}")
-    print(f"  打开: http://127.0.0.1:7860")
-    print(f"  退出: Ctrl+C")
-    print(f"{sep}\n")
+        ok, msg = check_ollama()
+        logging.info(f"Ollama 状态: {msg}")
 
-    demo = build_ui()
-    demo.launch(
-        server_name="127.0.0.1",
-        server_port=7860,
-        inbrowser=True,
-        share=False,
-        quiet=False,
-    )
+        sep = "=" * 50
+        start_msg = (
+            f"\n{sep}\n"
+            f"  合同智能提取工具\n"
+            f"  状态: {msg}\n"
+            f"  打开: http://127.0.0.1:7860\n"
+            f"  日志: {LOG_FILE}\n"
+            f"  退出: Ctrl+C\n"
+            f"{sep}\n"
+        )
+        print(start_msg)
+        logging.info("启动 Gradio 服务...")
+
+        # 关闭 Gradio 自己的静默模式，让控制台可见
+        demo = build_ui()
+        demo.launch(
+            server_name="127.0.0.1",
+            server_port=7860,
+            inbrowser=True,
+            share=False,
+            quiet=False,
+            show_error=True,
+        )
+    except Exception as e:
+        logging.exception("启动失败")
+        with open("崩溃日志.txt", "w", encoding="utf-8") as f:
+            f.write(f"时间: {datetime.now()}\n")
+            f.write(f"错误: {e}\n\n")
+            traceback.print_exc(file=f)
+            f.write("\n请查看 contract_extractor.log 获取详细信息\n")
+        print(f"\n❌ 程序启动失败，请查看「崩溃日志.txt」了解原因。")
+        print(f"   或打开 {LOG_FILE} 查看完整日志。")
+        os.system("pause")
