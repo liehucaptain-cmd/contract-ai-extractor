@@ -11,3 +11,4 @@ openpyxl>=3.1
 Pillow>=10.0
 PyMuPDF>=1.23
 huggingface_hub<0.25
+surya-ocr>=0.4
