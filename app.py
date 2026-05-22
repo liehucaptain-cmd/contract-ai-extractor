@@ -56,8 +56,8 @@ try:
     from surya.model.detection import DetectionModel as _DetModel, DetectionProcessor as _DetProc
     SURYA_AVAILABLE = True
     logging.info("Surya OCR 已就绪")
-except Exception:
-    logging.warning("Surya OCR 不可用（需 Python 3.10+），将降级使用视觉模型 OCR")
+except Exception as _e:
+    logging.warning(f"Surya OCR 不可用，降级使用视觉模型 OCR: {_e}")
 
 _surya_instances = None
 def get_surya():
@@ -134,7 +134,7 @@ def check_ollama():
         else: parts.append(f"文本{TEXT_MODEL}❌")
         if not SURYA_AVAILABLE:
             if vision_ok:
-                return True, f"{' '.join(parts)} (Surya未装，使用视觉模型OCR)"
+                return True, f"{' '.join(parts)} (OCR:视觉模型降级)"
             return False, f"{' '.join(parts)} | 请运行: ollama pull {VISION_MODEL}"
         return True, f"Surya✅ {' '.join(parts)}"
     except requests.exceptions.ConnectionError:
