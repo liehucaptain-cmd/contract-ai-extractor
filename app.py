@@ -78,7 +78,7 @@ if not hasattr(_gc_utils, '_patched'):
 OLLAMA_BASE = "http://localhost:11434"
 MODEL_NAME = "qwen2.5vl:7b"
 EXCEL_PATH = "合同台账模板.xlsx"
-MAX_IMAGE_LONGEST = 2048       # 图片最长边（像素），太大影响响应速度
+MAX_IMAGE_LONGEST = 1200       # 图片最长边（像素），8GB显存友好
 MAX_PDF_PAGES = 3              # PDF 最多取前 N 页
 MAX_RETRIES = 3
 RETRY_DELAY_SEC = 3
@@ -211,15 +211,13 @@ def safe_parse_json(text: str):
 
 
 def call_ollama_vision(image_b64: str):
-    """调用 Ollama 视觉模型（Ollama 原生格式），返回解析后的 dict"""
+    """调用 Ollama 视觉模型（/api/chat + images 字段），返回解析后的 dict"""
     payload = {
         "model": MODEL_NAME,
         "messages": [{
             "role": "user",
-            "content": [
-                {"type": "image", "data": image_b64},
-                {"type": "text", "text": SYSTEM_PROMPT},
-            ],
+            "content": SYSTEM_PROMPT,
+            "images": [image_b64],
         }],
         "stream": False,
         "format": "json",
