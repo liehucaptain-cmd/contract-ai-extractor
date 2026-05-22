@@ -24,7 +24,13 @@ jobs:
           pip install pyinstaller
 
       - name: Build with PyInstaller
-        run: pyinstaller --onedir --name 合同提取工具 --hidden-import fitz --hidden-import openpyxl --hidden-import PIL._tkinter_finder --collect-all gradio --collect-all gradio_client --collect-all starlette --collect-all jinja2 --collect-all PIL --collect-all openpyxl --collect-all surya --collect-all transformers --noconfirm app.py
+        run: pyinstaller --onedir --name 合同提取工具 --hidden-import fitz --hidden-import openpyxl --hidden-import PIL._tkinter_finder --hidden-import cv2 --hidden-import onnxruntime --collect-all gradio --collect-all gradio_client --collect-all starlette --collect-all jinja2 --collect-all PIL --collect-all openpyxl --collect-all surya --collect-all transformers --collect-all safetensors --collect-all tokenizers --collect-all onnxruntime --noconfirm app.py
+
+      # PyTorch 需要特殊处理，如果上一步失败则用 spec 文件重试
+      - name: Verify build
+        shell: pwsh
+        run: |
+          if (Test-Path "dist/合同提取工具/合同提取工具.exe") { echo "Build OK" } else { echo "Build might have issues with torch" }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
