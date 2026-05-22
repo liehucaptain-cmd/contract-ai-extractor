@@ -385,8 +385,8 @@ def build_ui():
             with gr.Column(scale=3):
                 result_table = gr.Dataframe(
                     headers=HEADERS[:-2],
-                    label="📋 提取结果（双击单元格可手动修正）",
-                    interactive=True,
+                    label="📋 提取结果",
+                    interactive=False,
                     wrap=True,
                 )
 
@@ -466,4 +466,8 @@ if __name__ == "__main__":
             f.write("\n请查看 contract_extractor.log 获取详细信息\n")
         print(f"\n❌ 程序启动失败，请查看「崩溃日志.txt」了解原因。")
         print(f"   或打开 {LOG_FILE} 查看完整日志。")
-        os.system("pause")
+        # 暂停窗口，让用户看到错误
+        try:
+            input("\n按 Enter 退出...")
+        except:
+            pass
