@@ -469,7 +469,10 @@ if __name__ == "__main__":
         print(start_msg)
         logging.info("启动 Gradio 服务...")
 
-        # 关闭 Gradio 自己的静默模式，让控制台可见
+        # 绕过 Gradio 的 localhost 可达性检查（某些 Windows 环境下代理/TUN 驱动阻止回环）
+        import gradio.networking as _gr_net
+        _gr_net.url_ok = lambda url: True
+        
         demo = build_ui()
         demo.launch(
             server_name="127.0.0.1",
