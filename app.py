@@ -83,13 +83,23 @@ MAX_PDF_PAGES = 3              # PDF 最多取前 N 页
 MAX_RETRIES = 3
 RETRY_DELAY_SEC = 3
 
+# ===================== 模型配置 =====================
+TEXT_MODEL_NAME = "qwen2.5:3b"       # 文本提取模型（轻量，OCR后纯文本输入）
+
 HEADERS = [
     "合同标题", "甲方全称", "乙方全称", "合同总金额", "金额大写",
     "生效日期", "到期日期", "服务期", "付款条件", "违约责任",
     "签约日期", "合同标的", "处理时间", "状态",
 ]
 
-SYSTEM_PROMPT = """你是合同信息提取专家。请从合同中提取以下13个字段，严格按照JSON格式返回（只返回JSON对象，不要包含其他任何文字）：
+OCR_PROMPT = """请从这张合同图片中提取所有可见的文字内容，按原文顺序逐行输出。
+不要改写，不要总结，不要分析，不要输出JSON。只输出原始文字。"""
+
+EXTRACT_PROMPT = """以下是合同内容，请从中提取结构化字段：
+
+{text}
+
+严格按照JSON格式返回（只返回JSON对象，不要其他文字）：
 
 {
   "合同标题": "",
@@ -108,13 +118,9 @@ SYSTEM_PROMPT = """你是合同信息提取专家。请从合同中提取以下1
 
 要求：
 1. 每项填入找到的具体内容，找不到填 null
-2. 金额带数字和单位（如"500,000元"或"伍拾万元整"）
+2. 金额带数字和单位
 3. 日期统一 YYYY-MM-DD 格式
-4. 付款条件有多条用分号连接
-5. 只输出JSON，不要解释"""
-
-
-# ===================== 工具函数 =====================
+4. 只输出JSON，不要解释"""
 
 def check_ollama():
     """检查 Ollama 服务和模型是否就绪"""
@@ -209,36 +215,51 @@ def safe_parse_json(text: str):
     return None
 
 
-def call_ollama_vision(image_b64: str):
-    """调用 Ollama 视觉模型（/api/chat + images 字段），返回解析后的 dict"""
-    payload = {
-        "model": MODEL_NAME,
-        "messages": [{
-            "role": "user",
-            "content": SYSTEM_PROMPT,
-            "images": [image_b64],
-        }],
-        "stream": False,
-        "format": "json",
-        "options": {"temperature": 0.1, "num_predict": 1024, "num_ctx": 2048},
-    }
-
+def _call_ollama(payload: dict) -> str:
+    """通用 Ollama API 调用，带重试，返回响应文本"""
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             resp = requests.post(f"{OLLAMA_BASE}/api/chat", json=payload, timeout=120)
             if resp.status_code != 200:
-                logging.warning(f"Ollama API 返回 {resp.status_code}: {resp.text[:200]}")
+                logging.warning(f"Ollama 返回 {resp.status_code}: {resp.text[:200]}")
                 time.sleep(RETRY_DELAY_SEC)
                 continue
-            body = resp.json()
-            content = body.get("message", {}).get("content", "")
-            result = safe_parse_json(content)
-            if result:
-                return result
+            return resp.json().get("message", {}).get("content", "")
         except Exception:
             if attempt < MAX_RETRIES:
                 time.sleep(RETRY_DELAY_SEC)
-    return None
+    return ""
+
+
+def ocr_image(image_b64: str) -> str:
+    """步骤1：视觉模型 OCR → 纯文本（只看字不提取）"""
+    payload = {
+        "model": MODEL_NAME,
+        "messages": [{
+            "role": "user",
+            "content": OCR_PROMPT,
+            "images": [image_b64],
+        }],
+        "stream": False,
+        "options": {"temperature": 0.0, "num_predict": 2048, "num_ctx": 2048},
+    }
+    return _call_ollama(payload)
+
+
+def extract_fields(text: str) -> dict:
+    """步骤2：文本模型从纯文字中提取结构化字段"""
+    payload = {
+        "model": TEXT_MODEL_NAME,
+        "messages": [{
+            "role": "user",
+            "content": EXTRACT_PROMPT.format(text=text),
+        }],
+        "stream": False,
+        "format": "json",
+        "options": {"temperature": 0.1, "num_predict": 1024},
+    }
+    content = _call_ollama(payload)
+    return safe_parse_json(content)
 
 
 # ===================== Excel 操作 =====================
@@ -304,25 +325,27 @@ def process_one_file(file_path: str):
         else:
             return None, f"{name}: 不支持的格式"
 
-        # ---- 2. 逐页调 AI ----
-        page_results = []
-        page_logs = []
+        # ---- 2. 步骤一：视觉模型 OCR 逐页看字 ----
+        all_text = ""
+        ocr_logs = []
         for i, img in enumerate(images):
-            image_b64 = image_to_base64(img)
-            result = call_ollama_vision(image_b64)
-            if result:
-                page_results.append(result)
-                page_logs.append(f"第{i+1}页✅")
+            b64 = image_to_base64(img)
+            text = ocr_image(b64)
+            if text:
+                all_text += f"\n=== 第{i+1}页 ===\n" + text
+                ocr_logs.append(f"第{i+1}页✅")
             else:
-                page_logs.append(f"第{i+1}页❌")
+                ocr_logs.append(f"第{i+1}页❌")
 
-        if not page_results:
-            log_detail = " ".join(page_logs)
-            return None, f"{name}: 所有页提取失败 [{log_detail}]"
+        if not all_text.strip():
+            return None, f"{name}: OCR 失败 [{' '.join(ocr_logs)}]"
 
-        # ---- 3. 合并结果 ----
-        merged = merge_results(page_results)
-        return merged, f"{name}: {' '.join(page_logs)}"
+        # ---- 3. 步骤二：文本模型提取字段 ----
+        result = extract_fields(all_text)
+        if not result:
+            return None, f"{name}: 字段提取失败（OCR成功但提取结果为空）"
+
+        return result, f"{name}: OCR={' '.join(ocr_logs)} | 提取✅"
 
     except ImportError as e:
         return None, f"{name}: 缺少依赖 - {e}"
