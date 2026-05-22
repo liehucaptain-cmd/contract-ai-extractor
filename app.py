@@ -76,7 +76,7 @@ if not hasattr(_gc_utils, '_patched'):
 
 # ===================== 配置区 =====================
 OLLAMA_BASE = "http://localhost:11434"
-MODEL_NAME = "qwen2.5-vl-7b"
+MODEL_NAME = "qwen2.5vl:7b"
 EXCEL_PATH = "合同台账模板.xlsx"
 MAX_IMAGE_LONGEST = 2048       # 图片最长边（像素），太大影响响应速度
 MAX_PDF_PAGES = 3              # PDF 最多取前 N 页
@@ -124,11 +124,12 @@ def check_ollama():
             return False, f"Ollama 返回异常: HTTP {r.status_code}"
         models = r.json().get("models", [])
         names = [m["name"] for m in models]
-        # 模糊匹配（支持 qwen2.5-vl:7b / qwen2.5-vl-7b:latest 等变体）
-        ok = any(MODEL_NAME.split(":")[0] in n for n in names)
+        # 模糊匹配（去连字符、去冒号、统一小写比较）
+        target = MODEL_NAME.replace("-", "").replace(":", "").replace("latest", "").lower()
+        ok = any(target in n.replace("-", "").replace(":", "").replace("latest", "").lower() for n in names)
         if not ok:
-            return False, f"未找到模型 {MODEL_NAME}，请运行: ollama pull {MODEL_NAME}"
-        return True, f"✅ Ollama 运行中 | 模型 {MODEL_NAME} 已就绪"
+            return False, f'未找到模型 {MODEL_NAME}\n已安装模型: {", ".join(names)}\n请运行: ollama pull {MODEL_NAME}'
+        return True, f"✅ Ollama 运行中 | 模型 {MODEL_NAME} 可用"
     except requests.exceptions.ConnectionError:
         return False, "❌ Ollama 未启动，请先启动 Ollama 桌面端"
 
@@ -419,7 +420,8 @@ def build_ui():
         filenames_state = gr.State([])
 
         # ---- 事件绑定 ----
-        demo.load(fn=check_ollama, outputs=[status])
+        # 只显示状态消息文本（check_ollama 返回 (bool, str)，取第二项）
+        demo.load(fn=lambda: check_ollama()[1], outputs=[status])
 
         extract_btn.click(
             fn=batch_process,
