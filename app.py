@@ -40,6 +40,13 @@ def global_excepthook(exc_type, exc_value, exc_traceback):
 
 sys.excepthook = global_excepthook
 
+# ===================== 清除系统代理（必须在 Gradio/httpx import 之前） =====================
+# Windows/某些环境存在系统代理，会导致 httpx 无法访问 localhost
+for _key in ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"]:
+    os.environ.pop(_key, None)
+os.environ.setdefault("no_proxy", "localhost,127.0.0.1,::1")
+os.environ.setdefault("NO_PROXY", "localhost,127.0.0.1,::1")
+
 import gradio as gr
 import requests
 import json
@@ -52,7 +59,7 @@ from pathlib import Path
 from PIL import Image
 import openpyxl
 
-# ===================== Mac Python 3.9 兼容补丁 =====================
+# ===================== Gradio schema 兼容补丁 (Python 3.9) =====================
 # Gradio 4.x + Python 3.9 在 get_api_info 中有 TypeError，
 # 当 schema 的 additionalProperties 为 False 时触发。
 import gradio_client.utils as _gc_utils
@@ -444,10 +451,6 @@ def build_ui():
 
 if __name__ == "__main__":
     try:
-        # 清除代理环境变量，避免 Gradio/httpx 检查 localhost 时走代理
-        for key in ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"]:
-            os.environ.pop(key, None)
-        
         _ensure_excel(EXCEL_PATH)
 
         ok, msg = check_ollama()
