@@ -52,6 +52,21 @@ from pathlib import Path
 from PIL import Image
 import openpyxl
 
+# ===================== Mac Python 3.9 兼容补丁 =====================
+# Gradio 4.x + Python 3.9 在 get_api_info 中有 TypeError，
+# 当 schema 的 additionalProperties 为 False 时触发。
+import gradio_client.utils as _gc_utils
+import functools as _ft
+if not hasattr(_gc_utils, '_patched'):
+    _orig_fn = _gc_utils._json_schema_to_python_type
+    @_ft.wraps(_orig_fn)
+    def _patched_fn(schema, defs):
+        if isinstance(schema, bool):
+            return 'str'
+        return _orig_fn(schema, defs)
+    _gc_utils._json_schema_to_python_type = _patched_fn
+    _gc_utils._patched = True
+
 # ===================== 配置区 =====================
 OLLAMA_BASE = "http://localhost:11434"
 MODEL_NAME = "qwen2.5-vl-7b"
@@ -429,6 +444,10 @@ def build_ui():
 
 if __name__ == "__main__":
     try:
+        # 清除代理环境变量，避免 Gradio/httpx 检查 localhost 时走代理
+        for key in ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"]:
+            os.environ.pop(key, None)
+        
         _ensure_excel(EXCEL_PATH)
 
         ok, msg = check_ollama()

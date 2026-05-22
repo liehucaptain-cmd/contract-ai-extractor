@@ -1,0 +1,11 @@
+时间: 2026-05-22 14:07:44.520325
+错误: When localhost is not accessible, a shareable link must be created. Please set share=True or check your proxy settings to allow access to localhost.
+
+Traceback (most recent call last):
+  File "/Users/wuxiansheng/.openclaw/workspace/contract-ai-extractor/app.py", line 456, in <module>
+    demo.launch(
+  File "/Users/wuxiansheng/Library/Python/3.9/lib/python/site-packages/gradio/blocks.py", line 2465, in launch
+    raise ValueError(
+ValueError: When localhost is not accessible, a shareable link must be created. Please set share=True or check your proxy settings to allow access to localhost.
+
+请查看 contract_extractor.log 获取详细信息
