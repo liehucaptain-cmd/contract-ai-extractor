@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+dist/
+build/
+*.spec
+合同台账模板.xlsx
